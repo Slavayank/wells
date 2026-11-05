@@ -20,7 +20,7 @@ class TestPlanMath(unittest.TestCase):
     def test_reorder_date_not_today_plus_lead(self):
         # остаток 3000 при 10/д, SS=0 => t_ss=300 => заказ через 300-60=240 дн
         m = E.plan_math(3000, flat(10), np.zeros(H + 1), 60, 30, 0, 30, H)
-        self.assertEqual(m["tau"], 240)
+        self.assertIn(m["tau"], (240, 241))     # заказ, когда покрытие дойдёт до L (±1 день порога дефицита)
 
     def test_pipeline_reduces_qty(self):
         cumA = np.zeros(H + 1); cumA[30:] = 600   # приход 600 на 30-й день
@@ -42,11 +42,20 @@ class TestReorderTrigger(unittest.TestCase):
     def test_pipeline_covering_lead_defers_order(self):
         cumA = np.zeros(H + 1); cumA[30:] = 2000
         m = E.plan_math(0, flat(10), cumA, 60, 30, 100, 30, H)
-        self.assertEqual(m["tau"], 130)      # 2000-10t<=100 => t=190, минус L=60
+        self.assertIn(m["tau"], (140, 141))  # SS-триггер дал бы 130, но покрытие (дефицит на дне ~201) > L => ждём, пока покрытие дойдёт до L
     def test_breach_before_lead_is_not_fixable_by_new_order(self):
         # остаток 0 < SS, но поставка в пути придёт до L и покрывает спрос: «заказать сегодня» быть не должно
         cumA = np.zeros(H + 1); cumA[20:] = 1500
         self.assertGreater(E.plan_math(0, flat(10), cumA, 90, 30, 100, 30, H)["tau"], 0)
+
+class TestSeasonalSafetyWindow(unittest.TestCase):
+    def test_ss_window_after_arrival(self):
+        d = np.zeros(H + 1); d[1:101] = 10.0           # сезон только в первые 100 дней, потом спроса нет
+        cumD = np.cumsum(d)
+        # SS «до прихода» (скаляр 632): P(L=120)=500 < 632 => триггер срабатывает (старое поведение; дату отодвигает уже правило покрытия)
+        self.assertIsNotNone(E.plan_math(1500, cumD, np.zeros(H + 1), 120, 60, 632, 30, H)["tau"])
+        # SS на окно ПОСЛЕ прихода (после сезона = 0) => заказывать нечего
+        self.assertIsNone(E.plan_math(1500, cumD, np.zeros(H + 1), 120, 60, np.zeros(H + 1), 30, H)["tau"])
 
 class TestLot(unittest.TestCase):
     def test_apply_lot(self):
@@ -132,6 +141,22 @@ class TestPipelineIntegration(unittest.TestCase):
     def test_buy_now_not_without_need_inside_lead(self):
         b = self.rec[self.rec["action"] == "BUY_NOW"]
         self.assertTrue((b["qty_raw"] > 0).all())
+    def test_excess_never_bought(self):
+        x = self.rec[self.rec["risk"] == "EXCESS"]
+        self.assertFalse(x["action"].isin(["BUY_NOW", "BUY_LATER"]).any())
+    def test_sub_unit_need_not_ordered(self):
+        b = self.rec[self.rec["action"] == "BUY_NOW"]
+        self.assertTrue(((b["qty_raw"] >= 1) | (b["risk"] == "SHORTAGE")).all())
+    def test_safety_stock_capped(self):
+        a = self.rec[self.rec["level_m"] > 0]
+        mx = a["category"].map(lambda c: max(self.meta["season_index"][c]))
+        slip = self.cfg["lead"]["slip_buffer_days"]
+        bound = a["level_m"] * mx * (a["lead_days"] + slip + a["cover_policy_days"]) / 28
+        self.assertTrue((a["safety_stock"] <= bound + 0.5).all())
+    def test_buy_now_only_if_cover_not_above_lead_plus_review(self):
+        b = self.rec[self.rec["action"] == "BUY_NOW"]
+        dso = b["days_to_stockout"].fillna(10**6)
+        self.assertTrue((dso <= b["lead_days"] + self.cfg["review_days"] + 1).all())
     def test_never_negative(self):
         self.assertTrue((self.rec["qty_recommended"] >= 0).all()); self.assertTrue((self.rec["stock_asof"] >= 0).all())
 

@@ -42,12 +42,12 @@ ru:{
   po_state:{on_time:'в срок',late:'с просрочкой',stale:'просрочен'}
  },
  dyn:{noSales:n=>`Нет продаж ${n} мес.`,coverAll:n=>`покрытие ${n} дн`,serviceLevel:x=>`уровень сервиса ${x}`,demandScale:x=>`масштаб спроса ${x}`},
- reason:{NO_SALES_12M:'Нет продаж 12 мес.',STOCK_GT_0:'Остаток > 0',NO_STOCK:'Нет остатка',COST_MISSING:'Нет себестоимости',LOW_MARKUP:'Наценка ниже порога',STOCK_UNVERIFIED:'Остаток не верифицирован',REORDER_POINT_WITHIN_REVIEW:'Точка заказа в пределах цикла пересмотра',REORDER_POINT_REACHED:'Точка заказа достигнута',ORDER_DATE_AFTER_REVIEW:'Дата заказа позже цикла пересмотра',COVERED:'Покрыто',WOULD_BUY:'Был бы в закупке',STOCKOUT_BEFORE_LEAD:'Дефицит до прихода плеча',COVER_ABOVE_L_PLUS_COVER_PLUS_X:'Покрытие выше L + C + X',STALE_PO_IGNORED:'Просроченный PO не учтён',MOQ_DOMINATES:'MOQ доминирует'},
- flag:{STOCK_UNVERIFIED:'Остаток не верифицирован',STOCK_ROW_ABSENT_ZERO:'Нет строки остатка (=0)',STALE_PO:'Просроченный PO',LATE_PO:'Просроченный PO (в пределах)',NO_WEIGHT:'Нет веса',MOQ_UNKNOWN:'MOQ неизвестен',SHORT_HISTORY:'Короткая история',DEMAND_LOWER_BOUND:'Спрос — нижняя оценка',LEAD_DEFAULT:'Плечо по умолчанию',MOQ_UPLIFT:'Поднято до мин. партии'},
+ reason:{NO_SALES_12M:'Нет продаж 12 мес.',STOCK_GT_0:'Остаток > 0',NO_STOCK:'Нет остатка',COST_MISSING:'Нет себестоимости',LOW_MARKUP:'Наценка ниже порога',STOCK_UNVERIFIED:'Остаток не верифицирован',REORDER_POINT_WITHIN_REVIEW:'Точка заказа в пределах цикла пересмотра',REORDER_POINT_REACHED:'Точка заказа достигнута',ORDER_DATE_AFTER_REVIEW:'Дата заказа позже цикла пересмотра',COVERED:'Покрыто',WOULD_BUY:'Был бы в закупке',STOCKOUT_BEFORE_LEAD:'Дефицит до прихода плеча',COVER_ABOVE_L_PLUS_COVER_PLUS_X:'Покрытие выше L + C + X',STALE_PO_IGNORED:'Просроченный PO не учтён',MOQ_DOMINATES:'MOQ доминирует',EXCESS_BLOCKS_BUY:'Избыток блокирует закупку'},
+ flag:{STOCK_UNVERIFIED:'Остаток не верифицирован',STOCK_ROW_ABSENT_ZERO:'Нет строки остатка (=0)',STALE_PO:'Просроченный PO',LATE_PO:'Просроченный PO (в пределах)',NO_WEIGHT:'Нет веса',MOQ_UNKNOWN:'MOQ неизвестен',SHORT_HISTORY:'Короткая история',DEMAND_LOWER_BOUND:'Спрос — нижняя оценка',LEAD_DEFAULT:'Плечо по умолчанию',MOQ_UPLIFT:'Поднято до мин. партии',NEED_BELOW_ONE_UNIT:'Потребность < 1 шт'},
  notes:{
   calendar:D=>`<div class="note">Недели размещения заказов по формуле «дата, когда проекция остатка достигает точки заказа минус плечо». Включает «${enumv('action','BUY_NOW')}» (текущая неделя) и «${enumv('action','BUY_LATER')}».</div>`,
   suppliers:D=>`<div class="note">Готовый «пакет заказа» по «${enumv('action','BUY_NOW')}». <b>Ограничение данных:</b> weight_kg заполнен только у 7 из 791 SKU, объёма нет — загрузка контейнеров на этих данных НЕ считается (колонки веса — только по SKU с весом). Для планирования используйте штуки и справочник габаритов, когда он появится.</div>`,
-  review:D=>`<div class="note">${enumv('action','REVIEW_ASSORTMENT')} — наценка &lt; порога (не в авто-закупку). ${enumv('action','MANUAL_CHECK')} — нет себестоимости или остаток не верифицирован. ${enumv('action','DEAD_STOCK')} — нет продаж ${D.cfg.dead_months} мес., остаток &gt; 0.</div>`,
+  review:D=>`<div class="note">${enumv('action','REVIEW_ASSORTMENT')} — наценка &lt; порога (не в авто-закупку). ${enumv('action','MANUAL_CHECK')} — нет себестоимости, остаток не верифицирован или мин. партия доминирует. ${enumv('action','DEAD_STOCK')} — нет продаж ${D.cfg.dead_months} мес., остаток &gt; 0.</div>`,
   delta:D=>`<div class="note">Сравнение с запуском ${D.manifest.prev_run||'—'}.</div>`,
   deltaEmpty:D=>`<div class="note">Предыдущего запуска нет — дельта появится после следующего прогона.</div>`,
   quality:D=>`<div class="note"><b>Правила:</b> единая дата среза ${D.meta.as_of}; остаток = снимок(1-е) − net-продажи(1..as-of) + приходы(1..as-of); отсутствие строки остатка = 0 (экспорт без нулей); неполный месяц в фит не идёт; net = sold − returned.</div>
@@ -62,8 +62,8 @@ ru:{
   pipeline:r=>`В пути: номинал ${f0(r.pipeline_nominal)}, эффективно ${f1(r.pipeline_eff)}${r.stale_po_qty?`, просрочено >${D.cfg.po.stale_days}д (не учтено) ${f0(r.stale_po_qty)}`:''}`,
   lead:r=>`Плечо L=${r.lead_days} дн [${enumv('lead_src',r.lead_src)}], покрытие C=${r.cover_policy_days} дн (допущение)`,
   demand:r=>`Спрос: level=${f1(r.level_m)} шт/мес (десезон.), σ=${f1(r.sigma_m)}`,
-  forecast:r=>`Прогноз за L: ${f1(r.forecast_L)}; за [L, L+C]: ${f1(r.forecast_cover)}`,
-  ss:r=>`Safety stock = z(${r.z}) · σ · √(Σ сезонн. месяцев за L+slip) = ${f1(r.safety_stock)}`,
+  forecast:r=>`Прогноз до прихода: ${f1(r.forecast_L)}; окно покрытия [a, a+C]: ${f1(r.forecast_cover)}`,
+  ss:r=>`Safety stock = z(${r.z}) · σ (или Пуассон) на окно [a, a+L+slip] после прихода = ${f1(r.safety_stock)}`,
   target:r=>`target = ${f1(r.forecast_cover)} + ${f1(r.safety_stock)} = ${f1(r.target)}`,
   proj:r=>`Прогноз остатка к приходу заказа: ${f1(r.proj_at_arrival)}`,
   qty:r=>`qty_raw = max(0, target − proj) = ${f1(r.qty_raw)}  → с партионностью (мин.партия ${f0(r.min_batch)}, кратность ${r.lot}) = ${f0(r.qty_would_buy)}`,
@@ -94,12 +94,12 @@ en:{
   po_state:{on_time:'on time',late:'late',stale:'stale'}
  },
  dyn:{noSales:n=>`No sales for ${n} mo.`,coverAll:n=>`cover ${n} d`,serviceLevel:x=>`service level ${x}`,demandScale:x=>`demand scale ${x}`},
- reason:{NO_SALES_12M:'No sales for 12 mo.',STOCK_GT_0:'Stock > 0',NO_STOCK:'No stock',COST_MISSING:'Cost missing',LOW_MARKUP:'Markup below threshold',STOCK_UNVERIFIED:'Stock unverified',REORDER_POINT_WITHIN_REVIEW:'Reorder point within review cycle',REORDER_POINT_REACHED:'Reorder point reached',ORDER_DATE_AFTER_REVIEW:'Order date after review cycle',COVERED:'Covered',WOULD_BUY:'Would be ordered',STOCKOUT_BEFORE_LEAD:'Stockout before lead time',COVER_ABOVE_L_PLUS_COVER_PLUS_X:'Cover above L + C + X',STALE_PO_IGNORED:'Stale PO ignored',MOQ_DOMINATES:'MOQ dominates'},
- flag:{STOCK_UNVERIFIED:'Stock unverified',STOCK_ROW_ABSENT_ZERO:'Stock row absent (=0)',STALE_PO:'Stale PO',LATE_PO:'Late PO (within limit)',NO_WEIGHT:'No weight',MOQ_UNKNOWN:'MOQ unknown',SHORT_HISTORY:'Short history',DEMAND_LOWER_BOUND:'Demand is a lower bound',LEAD_DEFAULT:'Default lead time',MOQ_UPLIFT:'Raised to min batch'},
+ reason:{NO_SALES_12M:'No sales for 12 mo.',STOCK_GT_0:'Stock > 0',NO_STOCK:'No stock',COST_MISSING:'Cost missing',LOW_MARKUP:'Markup below threshold',STOCK_UNVERIFIED:'Stock unverified',REORDER_POINT_WITHIN_REVIEW:'Reorder point within review cycle',REORDER_POINT_REACHED:'Reorder point reached',ORDER_DATE_AFTER_REVIEW:'Order date after review cycle',COVERED:'Covered',WOULD_BUY:'Would be ordered',STOCKOUT_BEFORE_LEAD:'Stockout before lead time',COVER_ABOVE_L_PLUS_COVER_PLUS_X:'Cover above L + C + X',STALE_PO_IGNORED:'Stale PO ignored',MOQ_DOMINATES:'MOQ dominates',EXCESS_BLOCKS_BUY:'Excess blocks purchase'},
+ flag:{STOCK_UNVERIFIED:'Stock unverified',STOCK_ROW_ABSENT_ZERO:'Stock row absent (=0)',STALE_PO:'Stale PO',LATE_PO:'Late PO (within limit)',NO_WEIGHT:'No weight',MOQ_UNKNOWN:'MOQ unknown',SHORT_HISTORY:'Short history',DEMAND_LOWER_BOUND:'Demand is a lower bound',LEAD_DEFAULT:'Default lead time',MOQ_UPLIFT:'Raised to min batch',NEED_BELOW_ONE_UNIT:'Need below 1 unit'},
  notes:{
   calendar:D=>`<div class="note">Order placement weeks by the rule “the date when projected stock reaches the reorder point minus lead time”. Includes “${enumv('action','BUY_NOW')}” (current week) and “${enumv('action','BUY_LATER')}”.</div>`,
   suppliers:D=>`<div class="note">Ready-to-place order package for “${enumv('action','BUY_NOW')}”. <b>Data limitation:</b> weight_kg is populated for only 7 of 791 SKUs and there is no volume — container load is NOT calculated from this data (weight columns cover only SKUs with weight). Use units for planning and the dimensions reference once it exists.</div>`,
-  review:D=>`<div class="note">${enumv('action','REVIEW_ASSORTMENT')} — markup &lt; threshold (not auto-ordered). ${enumv('action','MANUAL_CHECK')} — no cost or unverified stock. ${enumv('action','DEAD_STOCK')} — no sales for ${D.cfg.dead_months} mo., stock &gt; 0.</div>`,
+  review:D=>`<div class="note">${enumv('action','REVIEW_ASSORTMENT')} — markup &lt; threshold (not auto-ordered). ${enumv('action','MANUAL_CHECK')} — no cost, unverified stock, or MOQ dominates. ${enumv('action','DEAD_STOCK')} — no sales for ${D.cfg.dead_months} mo., stock &gt; 0.</div>`,
   delta:D=>`<div class="note">Compared to run ${D.manifest.prev_run||'—'}.</div>`,
   deltaEmpty:D=>`<div class="note">No previous run — the delta will appear after the next run.</div>`,
   quality:D=>`<div class="note"><b>Rules:</b> single as-of date ${D.meta.as_of}; stock = snapshot(1st) − net sales(1..as-of) + receipts(1..as-of); a missing stock row = 0 (zero-suppressed export); the partial month is not used in the fit; net = sold − returned.</div>
@@ -114,8 +114,8 @@ en:{
   pipeline:r=>`In transit: nominal ${f0(r.pipeline_nominal)}, effective ${f1(r.pipeline_eff)}${r.stale_po_qty?`, overdue >${D.cfg.po.stale_days}d (not counted) ${f0(r.stale_po_qty)}`:''}`,
   lead:r=>`Lead L=${r.lead_days} d [${enumv('lead_src',r.lead_src)}], cover C=${r.cover_policy_days} d (assumption)`,
   demand:r=>`Demand: level=${f1(r.level_m)} units/mo (deseasonalized), σ=${f1(r.sigma_m)}`,
-  forecast:r=>`Forecast over L: ${f1(r.forecast_L)}; over [L, L+C]: ${f1(r.forecast_cover)}`,
-  ss:r=>`Safety stock = z(${r.z}) · σ · √(Σ seasonal months over L+slip) = ${f1(r.safety_stock)}`,
+  forecast:r=>`Forecast to arrival: ${f1(r.forecast_L)}; cover window [a, a+C]: ${f1(r.forecast_cover)}`,
+  ss:r=>`Safety stock = z(${r.z}) · σ (or Poisson) over [a, a+L+slip] after arrival = ${f1(r.safety_stock)}`,
   target:r=>`target = ${f1(r.forecast_cover)} + ${f1(r.safety_stock)} = ${f1(r.target)}`,
   proj:r=>`Projected stock at order arrival: ${f1(r.proj_at_arrival)}`,
   qty:r=>`qty_raw = max(0, target − proj) = ${f1(r.qty_raw)}  → with lot sizing (min batch ${f0(r.min_batch)}, multiple ${r.lot}) = ${f0(r.qty_would_buy)}`,

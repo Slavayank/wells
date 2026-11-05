@@ -2,7 +2,7 @@
 import warnings
 import numpy as np
 import pandas as pd
-from scipy.stats import norm
+from scipy.stats import norm, poisson
 from . import data as D
 from .forecast import Prepared
 
@@ -11,13 +11,17 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 def plan_math(s0, cumD, cumA, L, C, ss, review_days, H):
     """Формулы (docs/FORMULAS.md). cumD/cumA: накопленный спрос/приход на днях 0..H (длина H+1).
+    ss — скаляр ИЛИ массив длины H+1: страховой запас SS(a) для заказа, который ПРИХОДИТ в день a
+        (считается на окно ПОСЛЕ прихода [a, a+L+slip], а не до него).
     P(t)=s0+cumA(t)-cumD(t)  — проекция остатка c учётом заказов в пути.
-    reorder-триггер: первый день t_ss, когда P(t) <= SS  =>  дата заказа = t_ss - L (не 'сегодня+lead').
-    target = Σспроса[L, L+C] + SS ;  qty = max(0, target - max(0, P(L)))  — для заказа, размещаемого в tau."""
+    tau (дней до заказа) = max( t_ss - L ,  dso_fix - L ,  0 ):
+        t_ss — первый день a>=L, когда P(a) <= SS(a)  (заказ, размещённый сегодня, приходит не раньше дня L);
+        dso_fix — первый день t>=L исчерпания запаса с учётом pipeline («закажем, когда покрытие дойдёт до срока поставки»).
+    target = Σспроса[a, a+C] + SS(a), a = tau+L ;  qty = max(0, target - max(0, P(a)))."""
     t = np.arange(H + 1)
     P = s0 + cumA - cumD
+    ss_a = np.full(H + 1, float(ss)) if np.isscalar(ss) else np.asarray(ss, dtype=float)
     has_demand = cumD[-1] >= 1.0
-    # день исчерпания (с учётом pipeline / только остаток)
     def first_zero(arr):
         if not has_demand:
             return None
@@ -25,29 +29,31 @@ def plan_math(s0, cumD, cumA, L, C, ss, review_days, H):
         return int(i[0]) if len(i) else None
     dso_pipe = first_zero(P)
     dso_stock = first_zero(s0 - cumD)
-    # reorder: новый заказ, размещённый сегодня, приходит только на день L, поэтому провалы P(t) при t<L
-    # он исправить не может. Триггер = первый день t>=L, когда P(t) <= SS  =>  tau = t_ss - L.
     tau = None
     if has_demand:
-        a = min(L, H)
-        i = np.nonzero((P[a:] <= ss))[0]
+        a0 = min(L, H)
+        i = np.nonzero(P[a0:] <= ss_a[a0:])[0]
         if len(i):
-            tau = max(0, int(i[0]))   # индекс i[0] отсчитан от дня L => уже равен t_ss - L
-    qty_now = _qty(s0, cumD, cumA, P, 0, L, C, ss, H)
-    qty_at_due = _qty(s0, cumD, cumA, P, tau, L, C, ss, H) if tau is not None else 0.0
+            # дефицит, который новый заказ ещё может предотвратить: первый день t>=L с P(t) <= -1
+            j = np.nonzero(P[a0:] <= -1.0)[0]
+            lb = int(j[0]) if len(j) else (H - L)            # индекс от дня L => уже равен dso_fix - L
+            tau = max(int(i[0]), lb, 0)
+    a = min((tau or 0) + L, H)
+    qty_now = _qty(s0, cumD, cumA, P, ss_a, 0, L, C, H)
+    qty_at_due = _qty(s0, cumD, cumA, P, ss_a, tau, L, C, H) if tau is not None else 0.0
     return {"days_to_stockout": dso_pipe, "days_to_stockout_stock_only": dso_stock, "tau": tau,
-            "qty_now": qty_now, "qty_at_due": qty_at_due,
-            "proj_at_arrival": max(0.0, float(P[min(L, H)])),
-            "demand_L": float(cumD[min(L, H)]), "demand_cover": float(cumD[min(L + C, H)] - cumD[min(L, H)]),
-            "cover_formula": None}
+            "qty_now": qty_now, "qty_at_due": qty_at_due, "ss_used": float(ss_a[a]),
+            "proj_at_arrival": max(0.0, float(P[a])),
+            "demand_L": float(cumD[a]), "demand_L0": float(cumD[min(L, H)]),
+            "demand_cover": float(cumD[min(a + C, H)] - cumD[a]), "cover_formula": None}
 
 
-def _qty(s0, cumD, cumA, P, tau, L, C, ss, H):
+def _qty(s0, cumD, cumA, P, ss_a, tau, L, C, H):
     if tau is None:
         return 0.0
     a = min(tau + L, H)
     e = min(tau + L + C, H)
-    target = cumD[e] - cumD[a] + ss
+    target = cumD[e] - cumD[a] + ss_a[a]
     return float(max(0.0, target - max(0.0, P[a])))
 
 
@@ -75,6 +81,8 @@ def run_plan(raw, cfg, asof):
     daily = np.zeros((n, H + 1))
     daily[:, 1:] = level[:, None] * idx_rows[:, moy_days] / dim[None, :]
     cumD = np.cumsum(daily, axis=1)
+    wd = np.zeros((n, H + 1)); wd[:, 1:] = idx_rows[:, moy_days] / dim[None, :]
+    Wcum = np.cumsum(wd, axis=1)                                 # накопленные сезонно-взвешенные месяцы
 
     # --- остатки и pipeline
     stock = D.roll_forward_stock(raw, asof).set_index("sku_id").reindex(P.sku_ids)
@@ -112,10 +120,21 @@ def run_plan(raw, cfg, asof):
         C = int(cfg["cover_days_by_category"].get(cat, cfg["cover_default_days"]))
         s0 = float(stock.iloc[i]["stock_asof"])
         sigma = fit["sigma"][i]
-        Lw = min(L + cfg["lead"]["slip_buffer_days"], H)
-        ss = z * sigma * np.sqrt(float((idx_rows[i, moy_days[:Lw]] / dim[:Lw]).sum()))   # Σ сезонно-взвешенных месяцев за L+slip
+        slip = cfg["lead"]["slip_buffer_days"]
+        Lw = L + slip
+        sc = cfg["safety"]
+        aa = np.arange(H + 1)
+        hi = np.minimum(aa + Lw, H)
+        # SS(a): окно ПОСЛЕ прихода [a, a+L+slip] — столько действует запас, пока не придёт следующая корректирующая поставка
+        wsum = Wcum[i][hi] - Wcum[i][aa]
+        ss = z * sigma * np.sqrt(np.maximum(wsum, 0.0))
+        lam = cumD[i][hi] - cumD[i][aa]
+        if level[i] < sc["poisson_below_level"]:                  # редкие продажи: нормальное приближение завышает запас
+            ss = np.where(lam > 0, poisson.ppf(cfg["service_level"], np.maximum(lam, 1e-9)) - lam, 0.0)
+        ss = np.minimum(ss, sc["cap_ratio"] * (cumD[i][np.minimum(aa + Lw + C, H)] - cumD[i][aa]))   # SS <= спрос за L+slip+C после прихода
+        ss = np.maximum(ss, 0.0)
         if level[i] <= 0:
-            ss = 0.0
+            ss = np.zeros(H + 1)
         m = plan_math(s0, cumD[i], cumA[i], L, C, ss, cfg["review_days"], H)
         total_pipe = s0 + float(pip["pipeline_eff"].get(sid, 0.0))
         avg_daily = (cumD[i][min(L + C, H)]) / max(min(L + C, H), 1)
@@ -125,7 +144,7 @@ def run_plan(raw, cfg, asof):
         cover_stock = m["days_to_stockout_stock_only"] if m["days_to_stockout_stock_only"] is not None else (H if avg_daily > 0 else None)
         lot = int(lots.iloc[i]["lot"]); mb = float(lots.iloc[i]["min_batch"])
         tau = m["tau"]
-        qty_basis = m["qty_now"] if (tau is not None and tau <= 0) else m["qty_at_due"]
+        qty_basis = m["qty_at_due"]
         qty_final = D.apply_lot(qty_basis, mb, lot)
         mkv = markup.iloc[i]
         w = sku.iloc[i]["weight_kg"]
@@ -157,6 +176,9 @@ def run_plan(raw, cfg, asof):
         else:
             risk = "OK"
 
+        if 0 < qty_basis < cfg["moq"]["min_need_units"] and risk != "SHORTAGE":
+            qty_final = 0.0                      # потребность меньше штуки и дефицита нет -> не заказывать
+            flags.append("NEED_BELOW_ONE_UNIT")
         # --- действие (приоритет правил сверху вниз)
         reasons = []
         if gross_dm[i] == 0 and (s0 > 0 or total_pipe > s0):
@@ -169,6 +191,8 @@ def run_plan(raw, cfg, asof):
             action, reasons = "REVIEW_ASSORTMENT", ["LOW_MARKUP"]
         elif st_state == "never_snapshotted":
             action, reasons = "MANUAL_CHECK", ["STOCK_UNVERIFIED"]
+        elif risk == "EXCESS" and (qty_final > 0 or tau is not None):
+            action, reasons = "NO_ACTION", ["EXCESS_BLOCKS_BUY"]
         elif moq_dom and risk != "SHORTAGE":
             action, reasons = "MANUAL_CHECK", ["MOQ_DOMINATES", "WOULD_BUY"]
         elif qty_final > 0 and tau is not None and tau <= cfg["review_days"]:
@@ -187,7 +211,7 @@ def run_plan(raw, cfg, asof):
         urg = 1.0 if dso is not None and dso <= 0 else (max(0.0, min(1.0, 1 - dso / (L + 30))) if dso is not None else 0.0)
         pdc = sku.iloc[i]["price_decile"]
         pw = cfg["priority"]["price_weight_base"] + cfg["priority"]["price_weight_step"] * (pdc if pd.notna(pdc) else 5)
-        uar = max(0.0, m["demand_L"] - s0 - float(cumA[i][min(L, H)]))      # недопокрытый спрос за плечо, шт
+        uar = max(0.0, m["demand_L0"] - s0 - float(cumA[i][min(L, H)]))      # недопокрытый спрос за плечо, шт
         exposure = uar + max(0.0, m["demand_cover"] - m["proj_at_arrival"])
         prio = urg * pw * np.log1p(exposure) if qty_final > 0 else 0.0
         if moq_dom and "MOQ_DOMINATES" not in reasons: reasons.append("MOQ_DOMINATES")
@@ -205,7 +229,7 @@ def run_plan(raw, cfg, asof):
             cover_stock_only_days=cover_stock, cover_with_pipeline_days=cover_pipe,
             cover_formula_days=None if cover_formula is None else round(cover_formula, 1),
             days_to_stockout=dso, forecast_L=round(m["demand_L"], 1), forecast_cover=round(m["demand_cover"], 1),
-            units_at_risk=round(uar, 1), safety_stock=round(ss, 1), target=round(m["demand_cover"] + ss, 1), proj_at_arrival=round(m["proj_at_arrival"], 1),
+            units_at_risk=round(uar, 1), safety_stock=round(m["ss_used"], 1), target=round(m["demand_cover"] + m["ss_used"], 1), proj_at_arrival=round(m["proj_at_arrival"], 1),
             level_m=round(float(level[i]), 2), sigma_m=round(float(sigma), 2), z=round(float(z), 3),
             fc_next_3m=round(float(sum(level[i] * idx_rows[i, (cur.month - 1 + k) % 12] for k in range(3))), 1),
             markup_pct=None if pd.isna(mkv) else float(mkv), lot=lot, min_batch=mb,
