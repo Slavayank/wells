@@ -1,0 +1,43 @@
+{
+  "run_id": "20260813_135523",
+  "as_of": "2026-08-13",
+  "code_version": "0.1.0",
+  "config_hash": "93c011876dd7",
+  "input_hashes": {
+    "sku_dim.csv": "4e263e467b0b6738",
+    "sales_monthly.csv": "0268db466bcce99c",
+    "stock_monthly.csv": "bbc2d64a5ff2e4fc",
+    "purchase_orders.csv": "49441fc695c01ab3",
+    "receipts.csv": "1c4d7571bd1deff9",
+    "supplier_dim.csv": "b46e3cb89bf25515"
+  },
+  "rows": {
+    "sku": 791,
+    "sales": 37414,
+    "stock": 9627,
+    "po": 660,
+    "rc": 2394,
+    "sup": 39
+  },
+  "counts": {
+    "INACTIVE": 295,
+    "BUY_NOW": 160,
+    "NO_ACTION": 102,
+    "BUY_LATER": 82,
+    "REVIEW_ASSORTMENT": 68,
+    "MANUAL_CHECK": 47,
+    "DEAD_STOCK": 37
+  },
+  "risk_counts": {
+    "N/A": 332,
+    "SHORTAGE": 208,
+    "OK": 139,
+    "EXCESS": 112
+  },
+  "prev_run": "20260813_131035",
+  "runtime_sec": 0.7,
+  "freshness": {
+    "last_full_sales_month": "2026-07",
+    "stock_snapshot_month": "2026-08"
+  }
+}

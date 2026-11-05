@@ -36,7 +36,7 @@
 - `qty_raw = max(0, target − max(0, P(a)))`
 - `qty = ceil(max(qty_raw, min_batch)/lot)·lot` (MOQ-прокси из истории PO: `min_batch` = p25 прошлых заказов SKU, `lot` — наибольшая из {100,50,10,5,1}, кратная ≥80% заказов)
 - `days_to_stockout` (для риска) = первый день `P(t) ≤ −1`; `cover_formula_days = (stock + pipeline_eff)/avg_daily_forecast(L+C)`.
-- `BUY_NOW` ⇔ `τ ≤ review_days` (т. е. покрытие ≤ L + 30 дн.), иначе `BUY_LATER` с датой `as_of + τ`.
+- `BUY_NOW` ⇔ `τ = 0` (дата заказа = `as_of`), иначе `BUY_LATER` с датой `as_of + τ`.
 
 ## 5. Открытые PO (единственный источник — `purchase_orders.status=open`, `qty_pending`; `sku_dim.on_order_qty` не используется — иначе дубль)
 | состояние | условие | вес | приход |
@@ -52,7 +52,7 @@
 3. `REVIEW_ASSORTMENT`: наценка < `MIN_MARKUP_PCT`=25 (не попадает в авто-закупку).
 3b. Риск `EXCESS` блокирует заказ: `NO_ACTION / EXCESS_BLOCKS_BUY` (и для BUY_NOW, и для BUY_LATER; qty_would_buy и order_date остаются в таблице). Потребность < `min_need_units`=1 шт без дефицита → не заказывать (`NEED_BELOW_ONE_UNIT`).
 4. `MANUAL_CHECK/MOQ_DOMINATES`: мин. партия > 3× потребности (`moq.dominance_ratio`) и нет риска дефицита — не заказывать автоматически.
-5. `BUY_NOW`: `qty>0` и `next_order_in_days ≤ review_days`(30); `BUY_LATER` — позже; `NO_ACTION` — покрыто.
+5. `BUY_NOW`: `qty>0` и `next_order_in_days = 0` (заказ сегодня); `BUY_LATER` — `next_order_in_days > 0`; `NO_ACTION` — покрыто.
 Риск (независимо): `SHORTAGE` — `days_to_stockout < L`; `EXCESS` — покрытие (симуляция **и** формула) `> L + C + 60`.
 
 ## 7. Приоритет (денег в данных нет)

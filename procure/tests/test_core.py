@@ -153,10 +153,13 @@ class TestPipelineIntegration(unittest.TestCase):
         slip = self.cfg["lead"]["slip_buffer_days"]
         bound = a["level_m"] * mx * (a["lead_days"] + slip + a["cover_policy_days"]) / 28
         self.assertTrue((a["safety_stock"] <= bound + 0.5).all())
-    def test_buy_now_only_if_cover_not_above_lead_plus_review(self):
+    def test_buy_now_order_date_is_as_of(self):
         b = self.rec[self.rec["action"] == "BUY_NOW"]
-        dso = b["days_to_stockout"].fillna(10**6)
-        self.assertTrue((dso <= b["lead_days"] + self.cfg["review_days"] + 1).all())
+        self.assertTrue((b["next_order_in_days"] <= 0).all())
+        self.assertTrue((pd.to_datetime(b["order_date"]) <= pd.Timestamp(self.cfg["as_of"])).all())
+    def test_future_order_date_is_buy_later(self):
+        f = self.rec[(self.rec["next_order_in_days"] > 0) & (self.rec["qty_recommended"] > 0)]
+        self.assertFalse((f["action"] == "BUY_NOW").any())
     def test_never_negative(self):
         self.assertTrue((self.rec["qty_recommended"] >= 0).all()); self.assertTrue((self.rec["stock_asof"] >= 0).all())
 

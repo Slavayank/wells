@@ -195,10 +195,10 @@ def run_plan(raw, cfg, asof):
             action, reasons = "NO_ACTION", ["EXCESS_BLOCKS_BUY"]
         elif moq_dom and risk != "SHORTAGE":
             action, reasons = "MANUAL_CHECK", ["MOQ_DOMINATES", "WOULD_BUY"]
-        elif qty_final > 0 and tau is not None and tau <= cfg["review_days"]:
-            action = "BUY_NOW"; reasons = ["REORDER_POINT_WITHIN_REVIEW" if tau > 0 else "REORDER_POINT_REACHED"]
+        elif qty_final > 0 and tau is not None and tau <= 0:
+            action = "BUY_NOW"; reasons = ["REORDER_POINT_REACHED"]
         elif qty_final > 0:
-            action, reasons = "BUY_LATER", ["ORDER_DATE_AFTER_REVIEW"]
+            action, reasons = "BUY_LATER", ["ORDER_DATE_IN_FUTURE"]
         else:
             action, reasons = "NO_ACTION", ["COVERED"]
         if action in ("MANUAL_CHECK", "REVIEW_ASSORTMENT") and qty_final > 0 and tau is not None and tau <= cfg["review_days"] and "WOULD_BUY" not in reasons:
