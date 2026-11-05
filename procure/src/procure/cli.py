@@ -38,7 +38,6 @@ def cmd_run(a):
     rec.to_csv(out / "recommendations.csv", index=False)
     sup, lines = report.supplier_packages(rec, cfg)
     sup.to_csv(out / "supplier_packages.csv", index=False); lines.to_csv(out / "supplier_order_lines.csv", index=False)
-    report.buy_now_by_supplier(rec).to_csv(out / "buy_now_by_supplier.csv", index=False)
     cal = report.order_calendar(rec); cal.to_csv(out / "order_calendar.csv", index=False)
     dl = report.delta_vs_previous(rec, prev); dl.to_csv(out / "delta.csv", index=False)
     pos.to_csv(out / "open_po_policy.csv", index=False)

@@ -25,16 +25,14 @@ def plan_math(s0, cumD, cumA, L, C, ss, review_days, H):
         return int(i[0]) if len(i) else None
     dso_pipe = first_zero(P)
     dso_stock = first_zero(s0 - cumD)
-    # reorder
+    # reorder: новый заказ, размещённый сегодня, приходит только на день L, поэтому провалы P(t) при t<L
+    # он исправить не может. Триггер = первый день t>=L, когда P(t) <= SS  =>  tau = t_ss - L.
     tau = None
     if has_demand:
-        if s0 <= ss:
-            t_ss = 0
-        else:
-            i = np.nonzero((P <= ss) & (t > 0))[0]
-            t_ss = int(i[0]) if len(i) else None
-        if t_ss is not None:
-            tau = max(0, t_ss - L)
+        a = min(L, H)
+        i = np.nonzero((P[a:] <= ss))[0]
+        if len(i):
+            tau = max(0, int(i[0]))   # индекс i[0] отсчитан от дня L => уже равен t_ss - L
     qty_now = _qty(s0, cumD, cumA, P, 0, L, C, ss, H)
     qty_at_due = _qty(s0, cumD, cumA, P, tau, L, C, ss, H) if tau is not None else 0.0
     return {"days_to_stockout": dso_pipe, "days_to_stockout_stock_only": dso_stock, "tau": tau,
@@ -147,6 +145,7 @@ def run_plan(raw, cfg, asof):
         if lead.iloc[i]["lead_src"] == "default": flags.append("LEAD_DEFAULT")
         if mb > qty_basis > 0: flags.append("MOQ_UPLIFT")   # поднято до типичной партии
 
+        moq_dom = mb > 0 and 0 < qty_basis and mb > cfg["moq"]["dominance_ratio"] * qty_basis
         # --- статус риска
         if level[i] <= 0 or not sold_recent and gross_dm[i] == 0:
             risk = "N/A"
@@ -170,13 +169,15 @@ def run_plan(raw, cfg, asof):
             action, reasons = "REVIEW_ASSORTMENT", ["LOW_MARKUP"]
         elif st_state == "never_snapshotted":
             action, reasons = "MANUAL_CHECK", ["STOCK_UNVERIFIED"]
+        elif moq_dom and risk != "SHORTAGE":
+            action, reasons = "MANUAL_CHECK", ["MOQ_DOMINATES", "WOULD_BUY"]
         elif qty_final > 0 and tau is not None and tau <= cfg["review_days"]:
             action = "BUY_NOW"; reasons = ["REORDER_POINT_WITHIN_REVIEW" if tau > 0 else "REORDER_POINT_REACHED"]
         elif qty_final > 0:
             action, reasons = "BUY_LATER", ["ORDER_DATE_AFTER_REVIEW"]
         else:
             action, reasons = "NO_ACTION", ["COVERED"]
-        if action in ("MANUAL_CHECK", "REVIEW_ASSORTMENT") and qty_final > 0 and tau is not None and tau <= cfg["review_days"]:
+        if action in ("MANUAL_CHECK", "REVIEW_ASSORTMENT") and qty_final > 0 and tau is not None and tau <= cfg["review_days"] and "WOULD_BUY" not in reasons:
             reasons.append("WOULD_BUY")
         if risk == "SHORTAGE": reasons.append("STOCKOUT_BEFORE_LEAD")
         if risk == "EXCESS": reasons.append("COVER_ABOVE_L_PLUS_COVER_PLUS_X")
@@ -189,7 +190,7 @@ def run_plan(raw, cfg, asof):
         uar = max(0.0, m["demand_L"] - s0 - float(cumA[i][min(L, H)]))      # недопокрытый спрос за плечо, шт
         exposure = uar + max(0.0, m["demand_cover"] - m["proj_at_arrival"])
         prio = urg * pw * np.log1p(exposure) if qty_final > 0 else 0.0
-        if mb > 0 and qty_basis > 0 and qty_basis < 0.25 * mb: reasons.append("MOQ_DOMINATES")
+        if moq_dom and "MOQ_DOMINATES" not in reasons: reasons.append("MOQ_DOMINATES")
         due_date = (asof + pd.Timedelta(days=int(max(tau, 0)))).date().isoformat() if tau is not None else None
         rows.append(dict(
             sku_id=sid, category=cat, supplier_id=sku.iloc[i]["supplier_id"], supply_type=sku.iloc[i]["supply_type"],

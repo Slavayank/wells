@@ -30,7 +30,7 @@
 - `qty_raw = max(0, target − max(0, P(L)))`
 - `qty = ceil(max(qty_raw, min_batch)/lot)·lot` (MOQ-прокси из истории PO: `min_batch` = p25 прошлых заказов SKU, `lot` — наибольшая из {100,50,10,5,1}, кратная ≥80% заказов)
 - `days_to_stockout` = первый день, когда `P(t) ≤ −1` (ожидаемый неудовлетворённый спрос ≥ 1 шт)
-- `t_ss` = первый день `P(t) ≤ SS`; **`next_order_date = as_of + max(0, t_ss − L)`**
+- `t_ss` = первый день **t ≥ L**, когда `P(t) ≤ SS` (заказ, размещённый сегодня, приходит только на день L, поэтому провалы до L он исправить не может); **`next_order_date = as_of + (t_ss − L)`**, не меньше 0
 - `cover_with_pipeline_days` = `days_to_stockout` (симуляция); `cover_formula_days = (stock + pipeline_eff)/avg_daily_forecast(L+C)`.
 
 ## 5. Открытые PO (единственный источник — `purchase_orders.status=open`, `qty_pending`; `sku_dim.on_order_qty` не используется — иначе дубль)
@@ -45,7 +45,8 @@
 1. `DEAD_STOCK`: нет продаж `dead_months`=12 и остаток/приходы > 0; `INACTIVE`: нет продаж и нет остатка.
 2. `MANUAL_CHECK`: продавался за 12 мес., но нет себестоимости (`COST_MISSING`) — **не** мёртвый ассортимент; либо остаток не верифицирован.
 3. `REVIEW_ASSORTMENT`: наценка < `MIN_MARKUP_PCT`=25 (не попадает в авто-закупку).
-4. `BUY_NOW`: `qty>0` и `next_order_in_days ≤ review_days`(30); `BUY_LATER` — позже; `NO_ACTION` — покрыто.
+4. `MANUAL_CHECK/MOQ_DOMINATES`: мин. партия > 3× потребности (`moq.dominance_ratio`) и нет риска дефицита — не заказывать автоматически.
+5. `BUY_NOW`: `qty>0` и `next_order_in_days ≤ review_days`(30); `BUY_LATER` — позже; `NO_ACTION` — покрыто.
 Риск (независимо): `SHORTAGE` — `days_to_stockout < L`; `EXCESS` — покрытие (симуляция **и** формула) `> L + C + 60`.
 
 ## 7. Приоритет (денег в данных нет)

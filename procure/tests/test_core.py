@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np, pandas as pd
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 warnings.filterwarnings("ignore")
-from procure import data as D, engine as E, forecast as F, report as R
+from procure import data as D, engine as E, forecast as F
 from procure.config import load_config, deep_update
 
 H = 540
@@ -37,6 +37,16 @@ class TestPlanMath(unittest.TestCase):
     def test_stockout_detected(self):
         m = E.plan_math(100, flat(10), np.zeros(H + 1), 60, 30, 0, 30, H)
         self.assertEqual(m["days_to_stockout"], 11)
+
+class TestReorderTrigger(unittest.TestCase):
+    def test_pipeline_covering_lead_defers_order(self):
+        cumA = np.zeros(H + 1); cumA[30:] = 2000
+        m = E.plan_math(0, flat(10), cumA, 60, 30, 100, 30, H)
+        self.assertEqual(m["tau"], 130)      # 2000-10t<=100 => t=190, минус L=60
+    def test_breach_before_lead_is_not_fixable_by_new_order(self):
+        # остаток 0 < SS, но поставка в пути придёт до L и покрывает спрос: «заказать сегодня» быть не должно
+        cumA = np.zeros(H + 1); cumA[20:] = 1500
+        self.assertGreater(E.plan_math(0, flat(10), cumA, 90, 30, 100, 30, H)["tau"], 0)
 
 class TestLot(unittest.TestCase):
     def test_apply_lot(self):
@@ -116,15 +126,14 @@ class TestPipelineIntegration(unittest.TestCase):
     def test_partial_month_not_in_fit(self):
         P = F.Prepared(self.raw, pd.Period("2026-08", "M"))
         self.assertEqual(str(P.months[-1]), "2026-07")
+    def test_moq_dominates_goes_to_manual(self):
+        d = self.rec[self.rec["reason_codes"].str.contains("MOQ_DOMINATES")]
+        self.assertFalse((d["action"] == "BUY_NOW").any() and not (d[d["action"] == "BUY_NOW"]["risk"] == "SHORTAGE").all())
+    def test_buy_now_not_without_need_inside_lead(self):
+        b = self.rec[self.rec["action"] == "BUY_NOW"]
+        self.assertTrue((b["qty_raw"] > 0).all())
     def test_never_negative(self):
         self.assertTrue((self.rec["qty_recommended"] >= 0).all()); self.assertTrue((self.rec["stock_asof"] >= 0).all())
-    def test_buy_now_export_by_supplier(self):
-        d = R.buy_now_by_supplier(self.rec)
-        self.assertEqual(list(d.columns), ["supplier_id", "category", "sku_id", "qty_recommended"])
-        self.assertEqual(len(d), int((self.rec["action"] == "BUY_NOW").sum()))
-        self.assertTrue(d["qty_recommended"].ge(0).all())
-        self.assertFalse(d["supplier_id"].isna().any())
-        self.assertTrue(d.reset_index(drop=True).equals(d.sort_values(["supplier_id", "category", "sku_id"]).reset_index(drop=True)))
 
 if __name__ == "__main__":
     unittest.main()

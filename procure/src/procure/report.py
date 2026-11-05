@@ -8,7 +8,6 @@ from .config import deep_update
 
 def supplier_packages(rec, cfg):
     buy = rec[rec["action"] == "BUY_NOW"].copy()
-    buy["supplier_id"] = buy["supplier_id"].fillna("UNSPECIFIED")
     pay = cfg["container"]["payload_kg"]
     g = buy.groupby("supplier_id").agg(skus=("sku_id", "count"), units=("qty_recommended", "sum"),
                                       kg=("kg_order", "sum"), skus_no_weight=("weight_kg", lambda x: int(x.isna().sum())),
@@ -16,14 +15,6 @@ def supplier_packages(rec, cfg):
                                       max_priority=("priority", "max")).reset_index()
     g["containers_by_weight_lb"] = (g["kg"] / pay).round(2)
     return g.sort_values("max_priority", ascending=False), buy.sort_values(["supplier_id", "priority"], ascending=[True, False])
-
-
-def buy_now_by_supplier(rec):
-    """Плоская выгрузка BUY_NOW: поставщик -> категория -> SKU -> количество."""
-    r = rec[rec["action"] == "BUY_NOW"].copy()
-    r["supplier_id"] = r["supplier_id"].fillna("UNSPECIFIED")
-    r["qty_recommended"] = r["qty_recommended"].round(0).astype(int)
-    return r.sort_values(["supplier_id", "category", "sku_id"])[["supplier_id", "category", "sku_id", "qty_recommended"]]
 
 
 def order_calendar(rec):

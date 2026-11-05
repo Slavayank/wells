@@ -41,5 +41,6 @@ moq:
   min_po_history: 2
   lots: [100, 50, 10, 5, 1]
   lot_share: 0.8
+  dominance_ratio: 3         # мин. партия > 3× потребности и нет дефицита -> не заказывать автоматически, ручная проверка
 container: {payload_kg: 26000}   # по весу = НИЖНЯЯ оценка числа контейнеров (объёма в данных нет)
 priority: {price_weight_base: 0.5, price_weight_step: 0.1}
