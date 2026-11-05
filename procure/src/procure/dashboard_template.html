@@ -1,0 +1,285 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Планирование закупок</title>
+<style>
+:root{--bg:#fff;--fg:#1c2024;--mut:#6b7280;--card:#f4f5f7;--line:#e2e4e9;--acc:#1f5fbf;--bad:#c0392b;--warn:#b7791f;--ok:#2f855a}
+@media(prefers-color-scheme:dark){:root{--bg:#15181c;--fg:#e8eaed;--mut:#9aa0a6;--card:#1f2328;--line:#2d333b;--acc:#6aa5ff;--bad:#ff7b6b;--warn:#e0b45a;--ok:#5fcf9a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--line);position:relative;z-index:10;background:var(--bg)}.hdr{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}h1{margin:0;font-size:18px}.sub{color:var(--mut);font-size:12px}
+.lang{display:flex;gap:3px;background:var(--card);border:1px solid var(--line);border-radius:7px;padding:2px}.lang button{background:none;border:0;color:var(--mut);font:inherit;font-size:12px;padding:4px 10px;border-radius:5px;cursor:pointer}.lang button.on{background:var(--acc);color:#fff}
+.kpis{display:flex;flex-wrap:wrap;gap:10px;padding:14px 20px}.k{background:var(--card);border-radius:8px;padding:10px 14px;min-width:140px}.k b{font-size:20px;display:block}.k span{color:var(--mut);font-size:12px}
+nav{display:flex;gap:4px;padding:0 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}nav button{background:none;border:0;padding:9px 12px;cursor:pointer;color:var(--mut);border-bottom:2px solid transparent;font:inherit}nav button.on{color:var(--fg);border-color:var(--acc)}
+main{padding:14px 20px}.tools{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}input,select{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit}#q{min-width:280px}.btn{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:6px 12px;font:inherit;cursor:pointer}.btn:hover{filter:brightness(1.08)}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{position:sticky;top:0;background:var(--bg);cursor:pointer;color:var(--mut)}tr:hover td{background:var(--card)}
+.n{text-align:right}.tag{padding:1px 6px;border-radius:9px;font-size:11px;background:var(--card)}.SHORTAGE{color:var(--bad)}.EXCESS{color:var(--warn)}.OK{color:var(--ok)}
+.note{background:var(--card);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:12.5px}.bar{height:10px;background:var(--acc);border-radius:3px;min-width:2px}
+#dr{position:fixed;right:0;top:0;bottom:0;width:min(520px,100%);background:var(--bg);border-left:1px solid var(--line);padding:16px;overflow:auto;display:none;box-shadow:-4px 0 16px #0003}
+#dr h3{margin:0 0 6px}#dr pre{background:var(--card);padding:10px;border-radius:6px;white-space:pre-wrap;font-size:12px}#dr button{float:right}
+</style></head><body>
+<header><div class="hdr"><div><h1 id="title"></h1><div class="sub" id="sub"></div></div><div class="lang" id="lang"></div></div></header>
+<div class="kpis" id="kpis"></div><nav id="nav"></nav><main id="main"></main><aside id="dr"></aside>
+<script>
+const D=/*__DATA__*/null;
+const I18N={
+ru:{
+ title:'Планирование закупок — рекомендации',
+ sub:D=>`as-of ${D.meta.as_of} · запуск ${D.manifest.run_id} · конфиг ${D.manifest.config_hash} · z=${D.meta.z.toFixed(2)}`,
+ kpi:{buyNow:'К закупке сейчас',units:'Штук',weight:'Вес, т',shortage:'Риск дефицита',excess:'Риск избытка',review:'Ревизия наценки',manual:'Ручная проверка',dead:'Мёртвый сток',stalePo:'Просроч. PO (stale)'},
+ tabs:{buyNow:'Закупка сейчас',planned:'Запланировано',calendar:'Календарь заказов',suppliers:'Поставщики',risks:'Риски',review:'Пересмотр / ручная проверка',delta:'Что изменилось',quality:'Качество данных и допущения',backtest:'Backtest и чувствительность'},
+ search:'поиск: SKU / категория / поставщик / флаг',allCategories:'все категории',flagsHeading:'Флаги',sensHeading:'Чувствительность к допущениям',drillTitle:'Расчёт',
+ noData:'нет данных',noWeight:'нет',noSupplier:'Не указан',daysShort:'дн',
+ csv:{export:'Скачать CSV (по поставщикам)',supplier:'Поставщик',category:'Категория',qty:'Количество'},
+ cols:{sku_id:'SKU',category:'Категория',supplier_id:'Поставщик',priority:'Приор.',qty_recommended:'Заказать',order_date:'Дата заказа',stock_asof:'Остаток',pipeline_eff:'В пути (эфф.)',cover_with_pipeline_days:'Покрытие, дн',lead_days:'Плечо',risk:'Риск',reason_codes:'Причины',flags:'Флаги',next_order_in_days:'Заказать через, дн',week:'Неделя',skus:'SKU',units:'Штук',kg:'Вес, кг',bar:'',containers_by_weight_lb:'Контейнеров (≥)',skus_no_weight:'SKU без веса',shortage_skus:'В дефиците',days_to_stockout:'До дефицита, дн',cover_policy_days:'Политика покрытия',action:'Действие',markup_pct:'Наценка %',sold_12m:'Продано 12м',qty_would_buy:'Был бы к закупке',change:'Изменение',detail:'Детали',model:'Модель',n:'Наблюдений',wape:'WAPE',bias:'Смещение',fill_proxy:'Fill proxy',excess_ratio:'Excess',variant:'Вариант',buy_now_skus:'SKU к закупке',buy_now_units:'Штук',buy_now_kg:'Вес, кг',excess_skus:'Избыток',flag:'Флаг'},
+ enums:{
+  action:{BUY_NOW:'Закупить сейчас',BUY_LATER:'Закупить позже',NO_ACTION:'Действий не требуется',REVIEW_ASSORTMENT:'Пересмотр ассортимента',MANUAL_CHECK:'Ручная проверка',DEAD_STOCK:'Мёртвый сток',INACTIVE:'Неактивный'},
+  risk:{SHORTAGE:'Дефицит',EXCESS:'Избыток',OK:'Норма','N/A':'Не применимо'},
+  category:{concrete_mixers:'Бетономешалки',grain_mills:'Зернодробилки',sanitary_faucets:'Сантехнические смесители',space_heaters:'Обогреватели',string_trimmers:'Триммеры',trimmer_blades_accessories:'Ножи и аксессуары для триммеров'},
+  supply_type:{import:'Импорт',local:'Локальный',unknown:'Неизвестно'},
+  stock_state:{snapshot:'снимок',row_absent_zero:'нет строки = 0',never_snapshotted:'нет истории снимков'},
+  lead_src:{sku_po:'по заказам SKU',supplier_po:'по заказам поставщика',supplier_dim:'справочник поставщика',default:'значение по умолчанию'},
+  change:{ACTION_CHANGED:'Действие изменилось',QTY_CHANGED:'Количество изменилось',RISK_CHANGED:'Риск изменился'},
+  model:{model:'модель',blend:'бленд',trailing12:'скользящие 12 мес',seasonal_naive:'сезонный наив',ma3:'среднее за 3 мес'},
+  variant:{base:'базовый',trust_all_open_PO:'доверять всем открытым PO',ignore_open_PO:'игнорировать открытые PO'},
+  po_state:{on_time:'в срок',late:'с просрочкой',stale:'просрочен'}
+ },
+ dyn:{noSales:n=>`Нет продаж ${n} мес.`,coverAll:n=>`покрытие ${n} дн`,serviceLevel:x=>`уровень сервиса ${x}`,demandScale:x=>`масштаб спроса ${x}`},
+ reason:{NO_SALES_12M:'Нет продаж 12 мес.',STOCK_GT_0:'Остаток > 0',NO_STOCK:'Нет остатка',COST_MISSING:'Нет себестоимости',LOW_MARKUP:'Наценка ниже порога',STOCK_UNVERIFIED:'Остаток не верифицирован',REORDER_POINT_WITHIN_REVIEW:'Точка заказа в пределах цикла пересмотра',REORDER_POINT_REACHED:'Точка заказа достигнута',ORDER_DATE_AFTER_REVIEW:'Дата заказа позже цикла пересмотра',COVERED:'Покрыто',WOULD_BUY:'Был бы в закупке',STOCKOUT_BEFORE_LEAD:'Дефицит до прихода плеча',COVER_ABOVE_L_PLUS_COVER_PLUS_X:'Покрытие выше L + C + X',STALE_PO_IGNORED:'Просроченный PO не учтён',MOQ_DOMINATES:'MOQ доминирует'},
+ flag:{STOCK_UNVERIFIED:'Остаток не верифицирован',STOCK_ROW_ABSENT_ZERO:'Нет строки остатка (=0)',STALE_PO:'Просроченный PO',LATE_PO:'Просроченный PO (в пределах)',NO_WEIGHT:'Нет веса',MOQ_UNKNOWN:'MOQ неизвестен',SHORT_HISTORY:'Короткая история',DEMAND_LOWER_BOUND:'Спрос — нижняя оценка',LEAD_DEFAULT:'Плечо по умолчанию',MOQ_UPLIFT:'Поднято до мин. партии'},
+ notes:{
+  calendar:D=>`<div class="note">Недели размещения заказов по формуле «дата, когда проекция остатка достигает точки заказа минус плечо». Включает «${enumv('action','BUY_NOW')}» (текущая неделя) и «${enumv('action','BUY_LATER')}».</div>`,
+  suppliers:D=>`<div class="note">Готовый «пакет заказа» по «${enumv('action','BUY_NOW')}». <b>Ограничение данных:</b> weight_kg заполнен только у 7 из 791 SKU, объёма нет — загрузка контейнеров на этих данных НЕ считается (колонки веса — только по SKU с весом). Для планирования используйте штуки и справочник габаритов, когда он появится.</div>`,
+  review:D=>`<div class="note">${enumv('action','REVIEW_ASSORTMENT')} — наценка &lt; порога (не в авто-закупку). ${enumv('action','MANUAL_CHECK')} — нет себестоимости или остаток не верифицирован. ${enumv('action','DEAD_STOCK')} — нет продаж ${D.cfg.dead_months} мес., остаток &gt; 0.</div>`,
+  delta:D=>`<div class="note">Сравнение с запуском ${D.manifest.prev_run||'—'}.</div>`,
+  deltaEmpty:D=>`<div class="note">Предыдущего запуска нет — дельта появится после следующего прогона.</div>`,
+  quality:D=>`<div class="note"><b>Правила:</b> единая дата среза ${D.meta.as_of}; остаток = снимок(1-е) − net-продажи(1..as-of) + приходы(1..as-of); отсутствие строки остатка = 0 (экспорт без нулей); неполный месяц в фит не идёт; net = sold − returned.</div>
+  <div class="note"><b>Открытые PO:</b> ${poStates()}; в пути номинально ${f0(D.meta.open_po_pending_total)} шт, учтено с коэффициентами ${f0(D.meta.open_po_effective_total)} шт. Сверка с sku_dim.on_order_qty = ${f0(D.meta.on_order_qty_check)} (один источник — дубля нет).</div>
+  <div class="note"><b>Допущения (ASSUMPTION):</b> покрытие по категориям ${coverMap()}; service level ${D.cfg.service_level}; запас на срыв срока ${D.cfg.lead.slip_buffer_days} дн.; min наценка ${D.cfg.min_markup_pct}%.</div>`,
+  backtest:D=>`<div class="note">Rolling-origin backtest, горизонт 6 мес. Baseline обязателен. Известное ограничение: на ${enumv('category','string_trimmers')} и ${enumv('category','space_heaters')} «${enumv('model','seasonal_naive')}» точнее модели по WAPE; у модели положительное смещение (~+17%) — прогноз консервативный (см. demand_scale в конфиге). fill_proxy/excess_ratio — оценка без учёта стартового остатка.</div>`
+ },
+ drill:{
+  skuLine:r=>`SKU ${r.sku_id} · ${enumv('category',r.category)} · ${supLabel(r.supplier_id)} (${enumv('supply_type',r.supply_type)})`,
+  action:'Действие',risk:'Риск',reasons:'Причины',flags:'Флаги',
+  stock:r=>`Остаток на as-of: ${f0(r.stock_asof)} = снимок ${f0(r.snapshot)} − продажи(неполн.мес.) ${f0(r.sold_partial)} + приходы ${f0(r.rc_partial)}  [${enumv('stock_state',r.stock_state)}]`,
+  pipeline:r=>`В пути: номинал ${f0(r.pipeline_nominal)}, эффективно ${f1(r.pipeline_eff)}${r.stale_po_qty?`, просрочено >${D.cfg.po.stale_days}д (не учтено) ${f0(r.stale_po_qty)}`:''}`,
+  lead:r=>`Плечо L=${r.lead_days} дн [${enumv('lead_src',r.lead_src)}], покрытие C=${r.cover_policy_days} дн (допущение)`,
+  demand:r=>`Спрос: level=${f1(r.level_m)} шт/мес (десезон.), σ=${f1(r.sigma_m)}`,
+  forecast:r=>`Прогноз за L: ${f1(r.forecast_L)}; за [L, L+C]: ${f1(r.forecast_cover)}`,
+  ss:r=>`Safety stock = z(${r.z}) · σ · √(Σ сезонн. месяцев за L+slip) = ${f1(r.safety_stock)}`,
+  target:r=>`target = ${f1(r.forecast_cover)} + ${f1(r.safety_stock)} = ${f1(r.target)}`,
+  proj:r=>`Прогноз остатка к приходу заказа: ${f1(r.proj_at_arrival)}`,
+  qty:r=>`qty_raw = max(0, target − proj) = ${f1(r.qty_raw)}  → с партионностью (мин.партия ${f0(r.min_batch)}, кратность ${r.lot}) = ${f0(r.qty_would_buy)}`,
+  stockout:r=>`Дней до дефицита (с pipeline): ${r.days_to_stockout??'—'}; покрытие по формуле остаток/ср.спрос: ${r.cover_formula_days??'—'}`,
+  order:r=>`Заказать через: ${r.next_order_in_days??'—'} дн → ${r.order_date||'—'}`,
+  meta:r=>`Наценка: ${r.markup_pct==null?L.noData:r.markup_pct}%  ·  вес ед.: ${r.weight_kg==null?L.noWeight:r.weight_kg} кг  ·  decile цены ${r.price_decile??'—'}  ·  приоритет ${r.priority}`
+ }
+},
+en:{
+ title:'Procurement planning — recommendations',
+ sub:D=>`as-of ${D.meta.as_of} · run ${D.manifest.run_id} · config ${D.manifest.config_hash} · z=${D.meta.z.toFixed(2)}`,
+ kpi:{buyNow:'To order now',units:'Units',weight:'Weight, t',shortage:'Shortage risk',excess:'Excess risk',review:'Markup review',manual:'Manual check',dead:'Dead stock',stalePo:'Stale POs'},
+ tabs:{buyNow:'Buy now',planned:'Planned',calendar:'Order calendar',suppliers:'Suppliers',risks:'Risks',review:'Review / manual check',delta:'What changed',quality:'Data quality & assumptions',backtest:'Backtest & sensitivity'},
+ search:'search: SKU / category / supplier / flag',allCategories:'all categories',flagsHeading:'Flags',sensHeading:'Sensitivity to assumptions',drillTitle:'Calculation',
+ noData:'no data',noWeight:'none',noSupplier:'Not specified',daysShort:'d',
+ csv:{export:'Download CSV (by supplier)',supplier:'Supplier',category:'Category',qty:'Quantity'},
+ cols:{sku_id:'SKU',category:'Category',supplier_id:'Supplier',priority:'Priority',qty_recommended:'Order qty',order_date:'Order date',stock_asof:'On hand',pipeline_eff:'In transit (eff.)',cover_with_pipeline_days:'Cover, days',lead_days:'Lead time',risk:'Risk',reason_codes:'Reasons',flags:'Flags',next_order_in_days:'Order in, days',week:'Week',skus:'SKUs',units:'Units',kg:'Weight, kg',bar:'',containers_by_weight_lb:'Containers (≥)',skus_no_weight:'SKUs w/o weight',shortage_skus:'In shortage',days_to_stockout:'Days to stockout',cover_policy_days:'Cover policy',action:'Action',markup_pct:'Markup %',sold_12m:'Sold 12 mo',qty_would_buy:'Would order',change:'Change',detail:'Details',model:'Model',n:'Observations',wape:'WAPE',bias:'Bias',fill_proxy:'Fill proxy',excess_ratio:'Excess',variant:'Variant',buy_now_skus:'SKUs to buy now',buy_now_units:'Units',buy_now_kg:'Weight, kg',excess_skus:'Excess',flag:'Flag'},
+ enums:{
+  action:{BUY_NOW:'Buy now',BUY_LATER:'Buy later',NO_ACTION:'No action needed',REVIEW_ASSORTMENT:'Assortment review',MANUAL_CHECK:'Manual check',DEAD_STOCK:'Dead stock',INACTIVE:'Inactive'},
+  risk:{SHORTAGE:'Shortage',EXCESS:'Excess',OK:'OK','N/A':'N/A'},
+  category:{concrete_mixers:'Concrete mixers',grain_mills:'Grain mills',sanitary_faucets:'Sanitary faucets',space_heaters:'Space heaters',string_trimmers:'String trimmers',trimmer_blades_accessories:'Trimmer blades & accessories'},
+  supply_type:{import:'Import',local:'Local',unknown:'Unknown'},
+  stock_state:{snapshot:'snapshot',row_absent_zero:'no row = 0',never_snapshotted:'never snapshotted'},
+  lead_src:{sku_po:'SKU POs',supplier_po:'supplier POs',supplier_dim:'supplier reference',default:'default value'},
+  change:{ACTION_CHANGED:'Action changed',QTY_CHANGED:'Quantity changed',RISK_CHANGED:'Risk changed'},
+  model:{model:'model',blend:'blend',trailing12:'trailing 12 mo',seasonal_naive:'seasonal naive',ma3:'3-month average'},
+  variant:{base:'base',trust_all_open_PO:'trust all open POs',ignore_open_PO:'ignore open POs'},
+  po_state:{on_time:'on time',late:'late',stale:'stale'}
+ },
+ dyn:{noSales:n=>`No sales for ${n} mo.`,coverAll:n=>`cover ${n} d`,serviceLevel:x=>`service level ${x}`,demandScale:x=>`demand scale ${x}`},
+ reason:{NO_SALES_12M:'No sales for 12 mo.',STOCK_GT_0:'Stock > 0',NO_STOCK:'No stock',COST_MISSING:'Cost missing',LOW_MARKUP:'Markup below threshold',STOCK_UNVERIFIED:'Stock unverified',REORDER_POINT_WITHIN_REVIEW:'Reorder point within review cycle',REORDER_POINT_REACHED:'Reorder point reached',ORDER_DATE_AFTER_REVIEW:'Order date after review cycle',COVERED:'Covered',WOULD_BUY:'Would be ordered',STOCKOUT_BEFORE_LEAD:'Stockout before lead time',COVER_ABOVE_L_PLUS_COVER_PLUS_X:'Cover above L + C + X',STALE_PO_IGNORED:'Stale PO ignored',MOQ_DOMINATES:'MOQ dominates'},
+ flag:{STOCK_UNVERIFIED:'Stock unverified',STOCK_ROW_ABSENT_ZERO:'Stock row absent (=0)',STALE_PO:'Stale PO',LATE_PO:'Late PO (within limit)',NO_WEIGHT:'No weight',MOQ_UNKNOWN:'MOQ unknown',SHORT_HISTORY:'Short history',DEMAND_LOWER_BOUND:'Demand is a lower bound',LEAD_DEFAULT:'Default lead time',MOQ_UPLIFT:'Raised to min batch'},
+ notes:{
+  calendar:D=>`<div class="note">Order placement weeks by the rule “the date when projected stock reaches the reorder point minus lead time”. Includes “${enumv('action','BUY_NOW')}” (current week) and “${enumv('action','BUY_LATER')}”.</div>`,
+  suppliers:D=>`<div class="note">Ready-to-place order package for “${enumv('action','BUY_NOW')}”. <b>Data limitation:</b> weight_kg is populated for only 7 of 791 SKUs and there is no volume — container load is NOT calculated from this data (weight columns cover only SKUs with weight). Use units for planning and the dimensions reference once it exists.</div>`,
+  review:D=>`<div class="note">${enumv('action','REVIEW_ASSORTMENT')} — markup &lt; threshold (not auto-ordered). ${enumv('action','MANUAL_CHECK')} — no cost or unverified stock. ${enumv('action','DEAD_STOCK')} — no sales for ${D.cfg.dead_months} mo., stock &gt; 0.</div>`,
+  delta:D=>`<div class="note">Compared to run ${D.manifest.prev_run||'—'}.</div>`,
+  deltaEmpty:D=>`<div class="note">No previous run — the delta will appear after the next run.</div>`,
+  quality:D=>`<div class="note"><b>Rules:</b> single as-of date ${D.meta.as_of}; stock = snapshot(1st) − net sales(1..as-of) + receipts(1..as-of); a missing stock row = 0 (zero-suppressed export); the partial month is not used in the fit; net = sold − returned.</div>
+  <div class="note"><b>Open POs:</b> ${poStates()}; nominally in transit ${f0(D.meta.open_po_pending_total)} units, counted with factors ${f0(D.meta.open_po_effective_total)} units. Reconciliation with sku_dim.on_order_qty = ${f0(D.meta.on_order_qty_check)} (single source, no double count).</div>
+  <div class="note"><b>Assumptions (ASSUMPTION):</b> cover by category ${coverMap()}; service level ${D.cfg.service_level}; lead-time slip buffer ${D.cfg.lead.slip_buffer_days} d; min markup ${D.cfg.min_markup_pct}%.</div>`,
+  backtest:D=>`<div class="note">Rolling-origin backtest, 6-month horizon. A baseline is mandatory. Known limitation: on ${enumv('category','string_trimmers')} and ${enumv('category','space_heaters')} “${enumv('model','seasonal_naive')}” beats the model on WAPE; the model has a positive bias (~+17%) — the forecast is conservative (see demand_scale in the config). fill_proxy/excess_ratio are estimates that ignore starting stock.</div>`
+ },
+ drill:{
+  skuLine:r=>`SKU ${r.sku_id} · ${enumv('category',r.category)} · ${supLabel(r.supplier_id)} (${enumv('supply_type',r.supply_type)})`,
+  action:'Action',risk:'Risk',reasons:'Reasons',flags:'Flags',
+  stock:r=>`On hand at as-of: ${f0(r.stock_asof)} = snapshot ${f0(r.snapshot)} − partial-month sales ${f0(r.sold_partial)} + receipts ${f0(r.rc_partial)}  [${enumv('stock_state',r.stock_state)}]`,
+  pipeline:r=>`In transit: nominal ${f0(r.pipeline_nominal)}, effective ${f1(r.pipeline_eff)}${r.stale_po_qty?`, overdue >${D.cfg.po.stale_days}d (not counted) ${f0(r.stale_po_qty)}`:''}`,
+  lead:r=>`Lead L=${r.lead_days} d [${enumv('lead_src',r.lead_src)}], cover C=${r.cover_policy_days} d (assumption)`,
+  demand:r=>`Demand: level=${f1(r.level_m)} units/mo (deseasonalized), σ=${f1(r.sigma_m)}`,
+  forecast:r=>`Forecast over L: ${f1(r.forecast_L)}; over [L, L+C]: ${f1(r.forecast_cover)}`,
+  ss:r=>`Safety stock = z(${r.z}) · σ · √(Σ seasonal months over L+slip) = ${f1(r.safety_stock)}`,
+  target:r=>`target = ${f1(r.forecast_cover)} + ${f1(r.safety_stock)} = ${f1(r.target)}`,
+  proj:r=>`Projected stock at order arrival: ${f1(r.proj_at_arrival)}`,
+  qty:r=>`qty_raw = max(0, target − proj) = ${f1(r.qty_raw)}  → with lot sizing (min batch ${f0(r.min_batch)}, multiple ${r.lot}) = ${f0(r.qty_would_buy)}`,
+  stockout:r=>`Days to stockout (with pipeline): ${r.days_to_stockout??'—'}; formula cover stock/avg demand: ${r.cover_formula_days??'—'}`,
+  order:r=>`Order in: ${r.next_order_in_days??'—'} d → ${r.order_date||'—'}`,
+  meta:r=>`Markup: ${r.markup_pct==null?L.noData:r.markup_pct}%  ·  unit weight: ${r.weight_kg==null?L.noWeight:r.weight_kg} kg  ·  price decile ${r.price_decile??'—'}  ·  priority ${r.priority}`
+ }
+}
+};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let LANG='ru';try{LANG=localStorage.getItem('procure_lang')||'ru'}catch(e){}
+let L=I18N[LANG]||I18N.ru;
+let sortK=null,sortD=-1,curTab='buyNow';
+const loc=()=>LANG==='ru'?'ru-RU':'en-US';
+const f0=x=>x==null?'—':Math.round(x).toLocaleString(loc());
+const f1=x=>x==null?'—':(+x).toLocaleString(loc(),{minimumFractionDigits:1,maximumFractionDigits:1});
+const ENUMS=new Set(['action','risk','category','supply_type','stock_state','lead_src','change','model','variant']);
+function enumv(kind,v){
+ const s=String(v);
+ if(kind==='variant'){
+  let m;
+  if((m=s.match(/^cover_all=(\d+)d$/)))return L.dyn.coverAll(m[1]);
+  if((m=s.match(/^service_level=([\d.]+)$/)))return L.dyn.serviceLevel(m[1]);
+  if((m=s.match(/^demand_scale=([\d.]+)$/)))return L.dyn.demandScale(m[1]);
+ }
+ if(kind==='reason'){
+  const m=s.match(/^NO_SALES_(\d+)M$/);
+  if(m)return L.dyn.noSales(m[1]);
+  return L.reason[s]||s;
+ }
+ if(kind==='flag')return L.flag[s]||s;
+ const map=L.enums[kind]||{};
+ return map[s]||s;
+}
+const supLabel=v=>v==null||Number.isNaN(v)||v==='UNSPECIFIED'?L.noSupplier:String(v);
+function poStates(){const o=D.meta.open_po_states||{};return Object.entries(o).map(([k,v])=>`${enumv('po_state',k)} ${v}`).join(', ')||'—'}
+function coverMap(){const o=D.cfg.cover_days_by_category||{};return Object.entries(o).map(([k,v])=>`${enumv('category',k)} ${v} ${L.daysShort}`).join(', ')}
+function fmtDetail(r){
+ const d=String(r.detail||''),m=d.match(/^(.*?) -> (.*)$/);
+ if(m&&(r.change==='ACTION_CHANGED'||r.change==='RISK_CHANGED'))return enumv(r.change==='ACTION_CHANGED'?'action':'risk',m[1])+' → '+enumv(r.change==='ACTION_CHANGED'?'action':'risk',m[2]);
+ return d;
+}
+function cell(r,k){
+ if(k==='bar')return r.bar||'';
+ const v=r[k];
+ if(v==null||v==='')return '—';
+ if(k==='supplier_id')return esc(supLabel(v));
+ if(k==='risk')return `<span class="${esc(v)}">${esc(enumv('risk',v))}</span>`;
+ if(k==='reason_codes')return esc(v.split('|').filter(Boolean).map(x=>enumv('reason',x)).join('; '));
+ if(k==='flags')return esc(v.split('|').filter(Boolean).map(x=>enumv('flag',x)).join('; '));
+ if(k==='flag')return esc(enumv('flag',v));
+ if(k==='detail')return esc(fmtDetail(r));
+ if(ENUMS.has(k))return esc(enumv(k,v));
+ return esc(String(v));
+}
+function table(rows,cols,opts={}){
+ const id='t'+Math.random().toString(36).slice(2);
+ return `<div class="wrap"><table id="${id}"><thead><tr>${cols.map(c=>`<th data-k="${c[0]}">${esc(L.cols[c[0]]||c[0])}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr ${opts.drill?`onclick="drill('${esc(r.sku_id)}')" style="cursor:pointer"`:''}>${cols.map(c=>`<td class="${c[1]==='n'?'n':''}">${c[1]==='n'?f0(r[c[0]]):cell(r,c[0])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+const COLS={
+ rc:[['sku_id'],['category'],['supplier_id'],['priority','n'],['qty_recommended','n'],['order_date'],['stock_asof','n'],['pipeline_eff','n'],['cover_with_pipeline_days','n'],['lead_days','n'],['risk'],['reason_codes'],['flags']],
+ planned:[['sku_id'],['category'],['supplier_id'],['priority','n'],['qty_recommended','n'],['next_order_in_days','n'],['order_date'],['stock_asof','n'],['pipeline_eff','n'],['cover_with_pipeline_days','n'],['lead_days','n'],['risk'],['reason_codes']],
+ risk:[['sku_id'],['category'],['supplier_id'],['risk'],['stock_asof','n'],['pipeline_eff','n'],['days_to_stockout','n'],['cover_with_pipeline_days','n'],['lead_days','n'],['cover_policy_days','n'],['action'],['reason_codes']],
+ review:[['sku_id'],['category'],['action'],['markup_pct','n'],['stock_asof','n'],['sold_12m','n'],['qty_would_buy','n'],['reason_codes'],['flags']],
+ calendar:[['week'],['skus','n'],['units','n'],['kg','n'],['bar']],
+ suppliers:[['supplier_id'],['skus','n'],['units','n'],['kg','n'],['containers_by_weight_lb','n'],['skus_no_weight','n'],['shortage_skus','n']],
+ delta:[['sku_id'],['change'],['detail']],
+ backtest:[['model'],['n','n'],['wape'],['bias'],['fill_proxy'],['excess_ratio']],
+ sens:[['variant'],['buy_now_skus','n'],['buy_now_units','n'],['buy_now_kg','n'],['shortage_skus','n'],['excess_skus','n']],
+ flags:[['flag'],['n','n']]
+};
+function listView(extra=''){
+ const cats=[...new Set(D.rec.map(r=>r.category))];
+ return `<div class="tools"><input id="q" placeholder="${esc(L.search)}"><select id="cat"><option value="">${esc(L.allCategories)}</option>${cats.map(c=>`<option value="${esc(c)}">${esc(enumv('category',c))}</option>`).join('')}</select>${extra}</div><div id="tb"></div>`;
+}
+function csvCell(v){const s=String(v==null?'':v);return /[";\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function buyNowCsv(){
+ const head=[L.csv.supplier,L.csv.category,'SKU',L.csv.qty];
+ const supKey=r=>{const s=supLabel(r.supplier_id);return s===L.noSupplier?'\uffff':s};
+ const catKey=r=>String(enumv('category',r.category));
+ const rows=rowsOf(['BUY_NOW']).slice().sort((a,b)=>supKey(a).localeCompare(supKey(b),loc())||catKey(a).localeCompare(catKey(b),loc())||String(a.sku_id).localeCompare(String(b.sku_id)));
+ return '\uFEFF'+[head].concat(rows.map(r=>[supLabel(r.supplier_id),enumv('category',r.category),r.sku_id,Math.round(r.qty_recommended||0)])).map(row=>row.map(csvCell).join(';')).join('\r\n');
+}
+function exportBuyNow(){
+ const blob=new Blob([buyNowCsv()],{type:'text/csv;charset=utf-8'});
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);a.download=`buy_now_by_supplier_${D.meta.as_of}.csv`;
+ document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),0);
+}
+function bindList(rows,cols){
+ const draw=()=>{
+  const q=($('q')?.value||'').toLowerCase(),c=$('cat')?.value||'';
+  let r=rows.filter(x=>(!c||x.category===c)&&(!q||hay(x).includes(q)));
+  if(sortK)r=[...r].sort((a,b)=>((a[sortK]??-1e18)>(b[sortK]??-1e18)?1:-1)*sortD);
+  $('tb').innerHTML=table(r.slice(0,400),cols,{drill:true});
+  document.querySelectorAll('#tb th').forEach(h=>h.onclick=()=>{sortD=sortK===h.dataset.k?-sortD:-1;sortK=h.dataset.k;draw()});
+ };
+ $('q').oninput=draw;$('cat').onchange=draw;draw();
+}
+const toks=(s,kind)=>(s||'').split('|').filter(Boolean).map(x=>enumv(kind,x)).join(' ');
+const hay=x=>[x.sku_id,x.category,enumv('category',x.category),x.supplier_id,supLabel(x.supplier_id),x.flags,toks(x.flags,'flag'),x.reason_codes,toks(x.reason_codes,'reason'),x.action,enumv('action',x.action),x.risk,enumv('risk',x.risk)].join(' ').toLowerCase();
+const rowsOf=a=>D.rec.filter(r=>a.includes(r.action)).sort((x,y)=>y.priority-x.priority);
+const TABS={
+ buyNow:()=>{$('main').innerHTML=listView(`<button class="btn" onclick="exportBuyNow()">${esc(L.csv.export)}</button>`);bindList(rowsOf(['BUY_NOW']),COLS.rc)},
+ planned:()=>{$('main').innerHTML=listView();bindList(rowsOf(['BUY_LATER']).sort((a,b)=>a.next_order_in_days-b.next_order_in_days),COLS.planned)},
+ calendar:()=>{const m=Math.max(...D.calendar.map(c=>c.units||0),1);const rows=D.calendar.map(c=>({...c,bar:`<div class="bar" style="width:${Math.max(2,(c.units||0)/m*240)}px"></div>`}));$('main').innerHTML=L.notes.calendar(D)+table(rows,COLS.calendar)},
+ suppliers:()=>{$('main').innerHTML=L.notes.suppliers(D)+table(D.suppliers,COLS.suppliers)},
+ risks:()=>{$('main').innerHTML=listView();bindList(D.rec.filter(r=>r.risk==='SHORTAGE'||r.risk==='EXCESS').sort((a,b)=>(a.risk>b.risk?1:-1)||b.priority-a.priority),COLS.risk)},
+ review:()=>{$('main').innerHTML=L.notes.review(D)+listView();bindList(rowsOf(['REVIEW_ASSORTMENT','MANUAL_CHECK','DEAD_STOCK']),COLS.review)},
+ delta:()=>{$('main').innerHTML=D.delta.length?L.notes.delta(D)+table(D.delta,COLS.delta):L.notes.deltaEmpty(D)},
+ quality:()=>{$('main').innerHTML=L.notes.quality(D)+`<h3>${esc(L.flagsHeading)}</h3>`+table(D.flagCounts,COLS.flags)},
+ backtest:()=>{$('main').innerHTML=L.notes.backtest(D)+table(D.backtest,COLS.backtest)+`<h3>${esc(L.sensHeading)}</h3>`+table(D.sens,COLS.sens)}
+};
+function renderKpis(){
+ const buy=rowsOf(['BUY_NOW']);
+ const kp=[
+  [L.kpi.buyNow,buy.length+' SKU'],
+  [L.kpi.units,f0(buy.reduce((s,r)=>s+(r.qty_recommended||0),0))],
+  [L.kpi.weight,f1(buy.reduce((s,r)=>s+(r.kg_order||0),0)/1000)],
+  [L.kpi.shortage,D.rec.filter(r=>r.risk==='SHORTAGE').length],
+  [L.kpi.excess,D.rec.filter(r=>r.risk==='EXCESS').length],
+  [L.kpi.review,rowsOf(['REVIEW_ASSORTMENT']).length],
+  [L.kpi.manual,rowsOf(['MANUAL_CHECK']).length],
+  [L.kpi.dead,rowsOf(['DEAD_STOCK']).length],
+  [L.kpi.stalePo,D.rec.filter(r=>(r.flags||'').includes('STALE_PO')).length]
+ ];
+ $('kpis').innerHTML=kp.map(k=>`<div class="k"><b>${k[1]}</b><span>${esc(k[0])}</span></div>`).join('');
+}
+function renderNav(){
+ const nav=$('nav');nav.innerHTML='';
+ Object.keys(TABS).forEach(k=>{
+  const b=document.createElement('button');b.textContent=L.tabs[k]||k;b.className=k===curTab?'on':'';
+  b.onclick=()=>{curTab=k;sortK=null;[...nav.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');TABS[k]()};
+  nav.appendChild(b);
+ });
+}
+function drill(id){
+ const r=D.rec.find(x=>x.sku_id===id);if(!r)return;
+ const reasons=(r.reason_codes||'').split('|').filter(Boolean).map(x=>enumv('reason',x)).join('; ')||'—';
+ const flags=(r.flags||'').split('|').filter(Boolean).map(x=>enumv('flag',x)).join('; ')||'—';
+ const lines=[
+  L.drill.skuLine(r),'',
+  `${L.drill.action}: ${enumv('action',r.action)}   ${L.drill.risk}: ${enumv('risk',r.risk)}`,
+  `${L.drill.reasons}: ${reasons}`,
+  `${L.drill.flags}: ${flags}`,'',
+  L.drill.stock(r),L.drill.pipeline(r),
+  L.drill.lead(r),'',
+  L.drill.demand(r),L.drill.forecast(r),L.drill.ss(r),L.drill.target(r),
+  L.drill.proj(r),L.drill.qty(r),'',
+  L.drill.stockout(r),L.drill.order(r),
+  L.drill.meta(r)
+ ];
+ $('dr').style.display='block';
+ $('dr').innerHTML=`<button onclick="this.parentNode.style.display='none'">✕</button><h3>${esc(L.drillTitle)}</h3><pre>${esc(lines.join('\n'))}</pre>`;
+}
+function setLang(l){LANG=l;try{localStorage.setItem('procure_lang',l)}catch(e){}render()}
+function render(){
+ L=I18N[LANG]||I18N.ru;
+ document.documentElement.lang=LANG;document.title=L.title;
+ $('title').textContent=L.title;
+ $('sub').textContent=L.sub(D);
+ $('lang').innerHTML=`<button class="${LANG==='ru'?'on':''}" onclick="setLang('ru')" title="Русский" aria-label="Русский">RU</button><button class="${LANG==='en'?'on':''}" onclick="setLang('en')" title="English" aria-label="English">EN</button>`;
+ renderKpis();renderNav();$('dr').style.display='none';TABS[curTab]();
+}
+render();
+</script></body></html>

@@ -1,0 +1,45 @@
+# Все бизнес-параметры здесь. Пометка ASSUMPTION = допущение, не взятое из данных;
+# влияние допущений показывает `procure sensitivity`.
+as_of: "2026-08-13"          # дата среза = дата выгрузки ERP. Единая для ВСЕХ таблиц.
+paths: {data_dir: data/raw, runs_dir: runs}
+horizon_days: 540
+review_days: 30              # цикл пересмотра закупщиками (раз в месяц)
+service_level: 0.95          # ASSUMPTION
+lead:
+  default_import_days: 123   # медиана planned_lead_days по датасету
+  default_local_days: 14     # ASSUMPTION
+  min_days: 14
+  cap_days: 180              # верхняя граница из ТЗ
+  slip_buffer_days: 14       # ASSUMPTION: запас на срыв срока (факт. срок по PO не связан с receipts)
+  history_months: 36
+cover_default_days: 60
+cover_days_by_category:      # ASSUMPTION: в ERP target_cover_days=0 у всех 791 SKU
+  sanitary_faucets: 60
+  trimmer_blades_accessories: 90
+  string_trimmers: 60
+  grain_mills: 90
+  concrete_mixers: 90
+  space_heaters: 60
+excess_buffer_days: 60       # избыток: cover > L + cover + X
+dead_months: 12              # нет продаж N мес
+min_markup_pct: 25
+forecast:
+  halflife_months: 6
+  window_months: 24
+  min_obs: 3
+  seasonal_min_months: 24
+  censor_from: "2024-01"     # раньше этой даты снимков остатка нет -> цензурирование не определить
+  use_censoring: false       # backtest: исключение месяцев stock=0&sales=0 ДАЁТ СМЕЩЕНИЕ +26% (vs +17%) -> выкл. по умолчанию
+  demand_scale: 1.0          # ASSUMPTION/калибровка: backtest показывает bias +17% (прогноз выше факта); 0.85 = поправка
+po:
+  stale_days: 60             # просрочка > N дней: PO не учитывается, флаг для закупщика
+  late_assumed_arrival_days: 21
+  late_factor: 0.5
+  reliability_k: 5
+  reliability_floor: 0.3
+moq:
+  min_po_history: 2
+  lots: [100, 50, 10, 5, 1]
+  lot_share: 0.8
+container: {payload_kg: 26000}   # по весу = НИЖНЯЯ оценка числа контейнеров (объёма в данных нет)
+priority: {price_weight_base: 0.5, price_weight_step: 0.1}
